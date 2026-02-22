@@ -1,0 +1,3 @@
+[submodule "ubcrocket-gs-lite"]
+	path = ubcrocket-gs-lite
+	url = git@github.com:EdwardJXLi/ubcrocket-gs-lite.git
