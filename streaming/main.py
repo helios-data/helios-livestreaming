@@ -2,7 +2,7 @@
 """
 Simple UDP video stream receiver and display
 Receives H264/H265 stream from cosmostreamer and displays it in a window
-Saves video to captures folder when stream ends
+Records video continuously to disk as frames arrive
 """
 
 import cv2
@@ -27,14 +27,15 @@ FRAME_HEIGHT = 1080
 FRAME_SIZE = FRAME_WIDTH * FRAME_HEIGHT * 3  # 3 bytes per pixel (BGR)
 CAPTURES_DIR = "captures"
 VIDEO_FPS = 30  # Adjust based on your stream's FPS
+RADIO_SERIAL_PORT = "/dev/ttyUSB0"
 
 # Initialize overlay system
 overlay_manager = OverlayManager()
 overlay_manager.add(StaticImageOverlay("overlay.png"))
-overlay_manager.add(TelemetryOverlay("telemetry.json"))
+overlay_manager.add(TelemetryOverlay(port=RADIO_SERIAL_PORT, baud=57600))
 overlay_manager.add(StatusOverlay())
 
-def read_frames(process, frame_queue, recording_queue):
+def read_frames(process, frame_queue):
     """Read raw video frames from GStreamer subprocess"""
     while not shutdown_flag.is_set():
         try:
@@ -53,65 +54,20 @@ def read_frames(process, frame_queue, recording_queue):
             except queue.Full:
                 pass  # Drop frame if display queue is full
 
-            # Put frame in recording queue (always save for recording)
-            recording_queue.put(frame.copy())
-
         except Exception as e:
             print(f"Error reading frame: {e}")
             break
 
-def save_recording(frames, start_time, end_time, frame_count, end_reason):
-    """Save recorded frames to video file and metadata to txt file"""
-    if not frames:
-        print("No frames to save")
-        return
 
-    # Create captures directory if it doesn't exist
-    os.makedirs(CAPTURES_DIR, exist_ok=True)
-
-    # Generate timestamp for filename
-    timestamp = start_time.strftime("%Y%m%d_%H%M%S")
-    video_filename = os.path.join(CAPTURES_DIR, f"capture_{timestamp}.mp4")
-    metadata_filename = os.path.join(CAPTURES_DIR, f"capture_{timestamp}.txt")
-
-    print(f"\nSaving {len(frames)} frames to {video_filename}...")
-
-    # Create video writer
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    video_writer = cv2.VideoWriter(video_filename, fourcc, VIDEO_FPS, (FRAME_WIDTH, FRAME_HEIGHT))
-
-    for frame in frames:
-        video_writer.write(frame)
-
-    video_writer.release()
-    print(f"Video saved: {video_filename}")
-
-    # Calculate metadata
-    duration = (end_time - start_time).total_seconds()
-    actual_fps = len(frames) / duration if duration > 0 else 0
-    file_size = os.path.getsize(video_filename) if os.path.exists(video_filename) else 0
-
-    # Save metadata
-    metadata = f"""Capture Metadata
-================
-Filename: {os.path.basename(video_filename)}
-Start Time: {start_time.strftime("%Y-%m-%d %H:%M:%S")}
-End Time: {end_time.strftime("%Y-%m-%d %H:%M:%S")}
-Duration: {duration:.2f} seconds
-Total Frames: {len(frames)}
-Displayed Frames: {frame_count}
-Resolution: {FRAME_WIDTH}x{FRAME_HEIGHT}
-Target FPS: {VIDEO_FPS}
-Actual FPS: {actual_fps:.2f}
-File Size: {file_size / (1024*1024):.2f} MB
-UDP Port: {UDP_PORT}
-End Reason: {end_reason}
-"""
-
-    with open(metadata_filename, 'w') as f:
-        f.write(metadata)
-
-    print(f"Metadata saved: {metadata_filename}")
+def write_frames(recording_queue, video_writer, frame_counter):
+    """Background thread that writes frames to disk continuously."""
+    while not shutdown_flag.is_set():
+        try:
+            frame = recording_queue.get(timeout=0.5)
+            video_writer.write(frame)
+            frame_counter['count'] += 1
+        except queue.Empty:
+            continue
 
 
 def main():
@@ -123,7 +79,7 @@ def main():
 
     # GStreamer pipeline - outputs raw BGR frames to stdout
     gst_command = [
-        'gst-launch-1.0.exe',
+        'gst-launch-1.0',
         '-q',  # Quiet mode
         'udpsrc',
         f'port={UDP_PORT}',
@@ -138,9 +94,20 @@ def main():
     print("Starting GStreamer process...")
 
     frame_count = 0
-    recorded_frames = []
     start_time = None
     end_reason = "Unknown"
+
+    # Set up recording output
+    os.makedirs(CAPTURES_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    video_filename = os.path.join(CAPTURES_DIR, f"capture_{timestamp}.mp4")
+    metadata_filename = os.path.join(CAPTURES_DIR, f"capture_{timestamp}.txt")
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video_writer = cv2.VideoWriter(video_filename, fourcc, VIDEO_FPS,
+                                   (FRAME_WIDTH, FRAME_HEIGHT))
+
+    recorded_counter = {'count': 0}
 
     # Set up signal handlers for graceful shutdown
     def signal_handler(signum, frame):
@@ -163,15 +130,25 @@ def main():
 
         # Create queues for frames
         frame_queue = queue.Queue(maxsize=5)
-        recording_queue = queue.Queue()
+        recording_queue = queue.Queue(maxsize=60)  # ~2s buffer at 30fps
 
-        # Start thread to read frames
-        reader_thread = threading.Thread(target=read_frames, args=(process, frame_queue, recording_queue), daemon=True)
+        # Start threads
+        reader_thread = threading.Thread(
+            target=read_frames,
+            args=(process, frame_queue),
+            daemon=True
+        )
+        writer_thread = threading.Thread(
+            target=write_frames,
+            args=(recording_queue, video_writer, recorded_counter),
+            daemon=True
+        )
         reader_thread.start()
+        writer_thread.start()
 
         print("Video stream opened successfully!")
+        print(f"Recording to {video_filename}")
         print("Press 'q' to quit, or close the window")
-        print("Recording will be saved when stream ends...")
 
         # Create window
         window_name = 'Drone Video Feed'
@@ -181,13 +158,6 @@ def main():
         start_time = datetime.now()
 
         while not shutdown_flag.is_set():
-            # Collect frames from recording queue
-            while not recording_queue.empty():
-                try:
-                    recorded_frames.append(recording_queue.get_nowait())
-                except queue.Empty:
-                    break
-
             try:
                 # Get frame from display queue (short timeout to stay responsive)
                 frame = frame_queue.get(timeout=0.1)
@@ -197,6 +167,12 @@ def main():
                 # Apply overlays to frame
                 context = {"frame_count": frame_count, "recording": True}
                 frame = overlay_manager.render(frame, context)
+
+                # Send overlaid frame to recording
+                try:
+                    recording_queue.put_nowait(frame)
+                except queue.Full:
+                    pass  # Drop frame rather than filling memory
 
                 # Display the frame
                 cv2.imshow(window_name, frame)
@@ -217,7 +193,6 @@ def main():
                 break
 
             # Check if window was closed via X button
-            # WND_PROP_VISIBLE returns < 1 when window is closed
             try:
                 if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
                     print("Window closed by user")
@@ -225,7 +200,6 @@ def main():
                     shutdown_flag.set()
                     break
             except cv2.error:
-                # Window doesn't exist anymore
                 print("Window no longer exists")
                 end_reason = "Window closed"
                 shutdown_flag.set()
@@ -237,7 +211,7 @@ def main():
         shutdown_flag.set()
 
     except FileNotFoundError:
-        print("ERROR: gst-launch-1.0.exe not found")
+        print("ERROR: gst-launch-1.0 not found")
         print("Make sure GStreamer is installed and in your PATH")
         sys.exit(1)
 
@@ -245,18 +219,14 @@ def main():
         end_time = datetime.now()
         shutdown_flag.set()  # Ensure flag is set for cleanup
 
-        # Give reader thread time to finish
+        # Give threads time to finish
         if 'reader_thread' in locals() and reader_thread.is_alive():
             print("Waiting for reader thread to finish...")
             reader_thread.join(timeout=2.0)
 
-        # Collect any remaining frames from recording queue
-        if 'recording_queue' in locals():
-            while not recording_queue.empty():
-                try:
-                    recorded_frames.append(recording_queue.get_nowait())
-                except queue.Empty:
-                    break
+        if 'writer_thread' in locals() and writer_thread.is_alive():
+            print("Flushing remaining frames to disk...")
+            writer_thread.join(timeout=5.0)
 
         # Cleanup process
         if 'process' in locals():
@@ -268,13 +238,37 @@ def main():
                 process.kill()
                 process.wait()
 
+        # Close video writer (finalizes the mp4 file)
+        video_writer.release()
+
         cv2.destroyAllWindows()
         print(f"Total frames displayed: {frame_count}")
-        print(f"Total frames recorded: {len(recorded_frames)}")
+        print(f"Total frames recorded: {recorded_counter['count']}")
 
-        # Save the recording
-        if recorded_frames and start_time:
-            save_recording(recorded_frames, start_time, end_time, frame_count, end_reason)
+        # Save metadata
+        if start_time:
+            duration = (end_time - start_time).total_seconds()
+            actual_fps = recorded_counter['count'] / duration if duration > 0 else 0
+            file_size = os.path.getsize(video_filename) if os.path.exists(video_filename) else 0
+
+            metadata = f"""Capture Metadata
+================
+Filename: {os.path.basename(video_filename)}
+Start Time: {start_time.strftime("%Y-%m-%d %H:%M:%S")}
+End Time: {end_time.strftime("%Y-%m-%d %H:%M:%S")}
+Duration: {duration:.2f} seconds
+Total Frames: {recorded_counter['count']}
+Displayed Frames: {frame_count}
+Resolution: {FRAME_WIDTH}x{FRAME_HEIGHT}
+Target FPS: {VIDEO_FPS}
+Actual FPS: {actual_fps:.2f}
+File Size: {file_size / (1024*1024):.2f} MB
+UDP Port: {UDP_PORT}
+End Reason: {end_reason}
+"""
+            with open(metadata_filename, 'w') as f:
+                f.write(metadata)
+            print(f"Recording saved: {video_filename} ({file_size / (1024*1024):.1f} MB)")
 
         print("Video receiver stopped")
 

@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "tracking-beacon-firmware"
+		},
+		{
+			"path": "streaming"
+		},
+		{
+			"path": "ubcrocket-gs-lite"
+		}
+	],
+	"settings": {}
+}

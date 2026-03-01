@@ -1,116 +1,167 @@
-"""Telemetry overlay for displaying live rocket data."""
+"""Telemetry overlay for displaying live rocket data from serial."""
 
-import json
-import os
 import threading
+import time
 
 import cv2
+import serial
+
+from serial_decoder import decode_packet, packet_to_dict, read_cobs_packet
 
 from .base import OverlayBase
 
 
+# Colors (BGR)
+WHITE = (255, 255, 255)
+GREEN = (0, 255, 0)
+RED = (0, 0, 255)
+YELLOW = (0, 255, 255)
+CYAN = (255, 255, 0)
+BG = (0, 0, 0)
+
+STATE_COLORS = {
+    "STANDBY": WHITE,
+    "ASCENT": GREEN,
+    "MACH_LOCK": YELLOW,
+    "DROGUE_DESCENT": CYAN,
+    "MAIN_DESCENT": CYAN,
+    "LANDED": WHITE,
+}
+
+
 class TelemetryOverlay(OverlayBase):
     """
-    Reads telemetry data from JSON file and displays live values.
-    Uses a background thread to avoid blocking the render loop.
+    Reads telemetry from serial port, decodes COBS/CRC/protobuf packets,
+    and renders a HUD overlay onto the video frame.
     """
 
-    def __init__(self, data_source="telemetry.json", enabled=True,
-                 position=(10, 80), font_scale=0.7, line_spacing=30,
-                 update_interval=0.1):
+    def __init__(self, port, baud=57600, timeout=1.0, enabled=True,
+                 position=(10, 80), font_scale=0.7, line_spacing=30):
         super().__init__(enabled)
-        self.data_source = data_source
         self.position = position
         self.font_scale = font_scale
         self.line_spacing = line_spacing
-        self.update_interval = update_interval  # How often to read file (seconds)
 
         self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.thickness = 2
-        self.color = (255, 255, 255)  # White
-        self.bg_color = (0, 0, 0)  # Black background for readability
 
         # Thread-safe telemetry storage
         self._lock = threading.Lock()
-        self._velocity = 0.0
-        self._acceleration = 0.0
-        self._altitude = 0.0
+        self._telemetry = {}
+        self._connected = False
+        self._packet_count = 0
+        self._error_count = 0
+        self._last_packet_time = 0.0
+        self._stale_threshold = 2.0  # seconds before data is considered stale
 
-        # Background reader thread
+        # Serial config
+        self._port = port
+        self._baud = baud
+        self._timeout = timeout
+
+        # Background serial reader thread
         self._stop_event = threading.Event()
         self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._reader_thread.start()
 
     def _reader_loop(self):
-        """Background thread that reads telemetry file periodically."""
+        """Background thread that reads and decodes serial telemetry."""
         while not self._stop_event.is_set():
-            if os.path.exists(self.data_source):
-                try:
-                    with open(self.data_source, "r") as f:
-                        data = json.load(f)
-
+            try:
+                with serial.Serial(self._port, self._baud,
+                                   timeout=self._timeout) as ser:
                     with self._lock:
-                        self._velocity = data.get("velocity", 0.0)
-                        self._acceleration = data.get("acceleration", 0.0)
-                        self._altitude = data.get("altitude", 0.0)
-                except (json.JSONDecodeError, IOError):
-                    # File might be being written to, skip this update
-                    pass
+                        self._connected = True
 
-            self._stop_event.wait(self.update_interval)
+                    while not self._stop_event.is_set():
+                        raw_data = read_cobs_packet(ser)
+                        if raw_data is None:
+                            continue
+
+                        packet = decode_packet(raw_data)
+                        if packet is None:
+                            with self._lock:
+                                self._error_count += 1
+                            continue
+
+                        telemetry = packet_to_dict(packet)
+                        with self._lock:
+                            self._telemetry = telemetry
+                            self._packet_count += 1
+                            self._last_packet_time = time.monotonic()
+
+            except serial.SerialException:
+                with self._lock:
+                    self._connected = False
+                # Wait before reconnecting
+                self._stop_event.wait(2.0)
 
     def stop(self):
         """Stop the background reader thread."""
         self._stop_event.set()
-        self._reader_thread.join(timeout=1.0)
+        self._reader_thread.join(timeout=2.0)
 
-    @property
-    def velocity(self):
-        with self._lock:
-            return self._velocity
-
-    @property
-    def acceleration(self):
-        with self._lock:
-            return self._acceleration
-
-    @property
-    def altitude(self):
-        with self._lock:
-            return self._altitude
-
-    def _draw_text_with_background(self, frame, text, position):
-        """Draw text with a semi-transparent background for readability."""
-        (text_width, text_height), baseline = cv2.getTextSize(
+    def _draw_text(self, frame, text, position, color=WHITE):
+        """Draw text with a black background for readability."""
+        (tw, th), baseline = cv2.getTextSize(
             text, self.font, self.font_scale, self.thickness
         )
-
         x, y = position
-        padding = 5
-
-        cv2.rectangle(
-            frame,
-            (x - padding, y - text_height - padding),
-            (x + text_width + padding, y + baseline + padding),
-            self.bg_color,
-            -1
-        )
-
+        pad = 4
+        cv2.rectangle(frame, (x - pad, y - th - pad),
+                       (x + tw + pad, y + baseline + pad), BG, -1)
         cv2.putText(frame, text, position, self.font, self.font_scale,
-                    self.color, self.thickness)
+                    color, self.thickness)
 
     def render(self, frame, context=None):
-        """Render telemetry data onto frame (no I/O, just reads from memory)."""
+        """Render telemetry HUD onto frame."""
+        with self._lock:
+            telem = self._telemetry.copy()
+            connected = self._connected
+            pkt_count = self._packet_count
+            err_count = self._error_count
+            last_time = self._last_packet_time
+
         x, y = self.position
+        dy = self.line_spacing
+
+        if not connected:
+            self._draw_text(frame, "TELEMETRY: NO SERIAL", (x, y), RED)
+            return frame
+
+        if not telem:
+            self._draw_text(frame, "TELEMETRY: WAITING...", (x, y), YELLOW)
+            return frame
+
+        stale = (time.monotonic() - last_time) > self._stale_threshold if last_time else False
+
+        state = telem.get("state", "UNKNOWN")
+        state_color = STATE_COLORS.get(state, WHITE)
+
+        if stale:
+            age = time.monotonic() - last_time
+            self._draw_text(frame, f"TELEMETRY STALE ({age:.0f}s)", (x, y), RED)
+            y += dy
 
         lines = [
-            f"Velocity: {self.velocity:.2f} km/h",
-            f"Accel: {self.acceleration:.2f} m/s^2",
-            f"Altitude: {self.altitude:.2f} km",
+            (f"{state}", state_color if not stale else YELLOW),
+            (f"ALT  {telem.get('kf_altitude', 0):>8.1f} m", WHITE),
+            (f"VEL  {telem.get('kf_velocity', 0):>8.1f} m/s", WHITE),
+            (f"ACC  {telem.get('accel_magnitude', 0):>8.1f} m/s2", WHITE),
+            (f"GPS  {telem.get('gps_latitude', 0):.5f}, "
+             f"{telem.get('gps_longitude', 0):.5f}", CYAN),
+            (f"SATS {telem.get('gps_sats', 0)}  "
+             f"FIX {telem.get('gps_fix', 0)}", CYAN),
+            (f"BARO {'OK' if telem.get('baro0_healthy') else 'FAIL'} / "
+             f"{'OK' if telem.get('baro1_healthy') else 'FAIL'}",
+             GREEN if telem.get('baro0_healthy') and telem.get('baro1_healthy') else RED),
+            (f"T+{telem.get('timestamp_ms', 0) / 1000:.1f}s  "
+             f"PKT #{pkt_count}"
+             + (f"  ERR {err_count}" if err_count else ""),
+             RED if err_count else WHITE),
         ]
 
-        for i, line in enumerate(lines):
-            pos = (x, y + i * self.line_spacing)
-            self._draw_text_with_background(frame, line, pos)
+        for i, (text, color) in enumerate(lines):
+            self._draw_text(frame, text, (x, y + i * dy), color)
 
         return frame
