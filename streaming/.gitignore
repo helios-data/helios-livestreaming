@@ -1,2 +1,7 @@
 *.mp4
+.python-version
+
+.venv/
 __pycache__/
+captures/
+telemetry_logs/
