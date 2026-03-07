@@ -304,7 +304,7 @@ def main():
             gst_command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            bufsize=FRAME_SIZE
+            bufsize=FRAME_SIZE * 15
         )
 
         # Thread 1: reads raw frames from GStreamer → _latest_raw_frame
