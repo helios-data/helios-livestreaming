@@ -1,18 +1,15 @@
 [project]
-name = "simple-gs"
+name = "helios-livestreaming"
 version = "0.1.0"
-description = "Simple Ground Station for UBC Rocket - decodes COBS/CRC/Protobuf serial packets"
+description = "Add your description here"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "pyserial>=3.5",
-    "cobs>=1.2.1",
+    "numpy>=2.2.6",
+    "opencv-python>=4.13.0.92",
+    "cobs>=1.2",
     "crcmod>=1.7",
-    "protobuf>=5.29.0",
+    "protobuf>=5.0",
+    "pyserial>=3.5",
+    "pyfakewebcam>=0.1.0",
 ]
-
-[project.scripts]
-simple-gs = "simple_gs.decoder:main"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"

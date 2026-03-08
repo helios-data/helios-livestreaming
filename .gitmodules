@@ -1,3 +1,6 @@
-[submodule "ubcrocket-gs-lite"]
-	path = ubcrocket-gs-lite
-	url = https://github.com/EdwardJXLi/ubcrocket-gs-lite.git
+[submodule "helios-protos"]
+	path = helios-protos
+	url = https://github.com/helios-data/helios-protos
+[submodule "falcon-protos"]
+	path = falcon-protos
+	url = https://github.com/UBC-Rocket/falcon-protos
