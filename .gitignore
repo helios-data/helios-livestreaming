@@ -5,3 +5,4 @@
 __pycache__/
 captures/
 telemetry_logs/
+generated/

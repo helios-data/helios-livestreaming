@@ -7,8 +7,8 @@ FALCON_PROTO_SOURCE_DIR=falcon-protos
 FALCON_PROTO_BUILD_DIR=generated/falcon
 
 # Find all .proto files in the proto directory and subdirectories
-HELIOS_PROTO_SRC := $(wildcard $(HELIOS_PROTO_SOURCE_DIR)/**/*.proto)
-FALCON_PROTO_SRC := $(wildcard $(FALCON_PROTO_SOURCE_DIR)/**/*.proto)
+HELIOS_PROTO_SRC := $(shell find $(HELIOS_PROTO_SOURCE_DIR) -name "*.proto")
+FALCON_PROTO_SRC := $(shell find $(FALCON_PROTO_SOURCE_DIR) -name "*.proto")
 
 # 1=true, 0=false
 DOCKER_DISABLED=1
@@ -30,10 +30,13 @@ deps:
 	uv run sync
 
 run:
-	ifeq ($(wildcard $(HELIOS_PROTO_BUILD_DIR)/.),)
-		$(error Helios Protobuf build directory not found. Please run 'make proto')
-	else ifeq ($(wildcard $(FALCON_PROTO_BUILD_DIR)/.),)
-		$(error Falcon Protobuf build directory not found. Please run 'make proto')
-	else
-		uv run src/main.py
-	endif
+	@if [ ! -d "$(HELIOS_PROTO_BUILD_DIR)" ]; then \
+		echo "Helios Protobuf build directory not found. Please run 'make proto'"; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(FALCON_PROTO_BUILD_DIR)" ]; then \
+		echo "Falcon Protobuf build directory not found. Please run 'make proto'"; \
+		exit 1; \
+	fi
+
+	uv run src/main.py
