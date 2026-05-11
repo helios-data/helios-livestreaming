@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Helios Rocket Overlay</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            color: white;
+            font-family: 'Roboto Mono', monospace;
+            overflow: hidden;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        }
+
+        .overlay-root {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+            padding: 20px;
+        }
+
+        .logo {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 200px;
+            height: auto;
+            opacity: 0.9;
+        }
+
+        .status-panel {
+            width: fit-content;
+            background: rgba(24, 24, 24, 0.85);
+            border: 2px solid rgba(255, 255, 255, 0.16);
+            border-radius: 16px;
+            padding: 18px 20px;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        .status-panel .row {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            font-size: 0.84rem;
+            gap: 20px;
+        }
+
+        .status-panel .row:last-child {
+            margin-bottom: 0;
+        }
+
+        .status-panel .label {
+            min-width: 75px;
+            text-align: left;
+        }
+
+        .status-panel .value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            text-align: left;
+            color: #e2e8f0;
+        }
+
+        .status-panel .status-ok {
+            color: #4ade80 !important;
+        }
+
+        .status-panel .status-error {
+            color: #fb7185 !important;
+        }
+
+        .status-panel .status-info {
+            color: #38bdf8 !important;
+        }
+
+        .status-panel .detail-row {
+            justify-content: flex-start;
+            margin-bottom: 2px;
+        }
+
+        .status-panel .status-detail {
+            display: block;
+            width: 100%;
+            font-size: 0.88rem;
+            line-height: 1.2;
+            color: #e2e8f0;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+
+        .gauge-panel {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            margin-top: auto;
+            margin-bottom: 16px;
+        }
+
+        .gauge-card {
+            width: min(200px, 30vw);
+            background: rgba(12, 12, 12, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 16px;
+            padding: 10px 12px 14px;
+            box-shadow: 0 14px 24px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+
+        .gauge-title {
+            font-size: 0.84rem;
+            letter-spacing: 0.18em;
+            color: #FFFFFE;
+            margin-bottom: 8px;
+        }
+
+        .gauge-svg {
+            width: 100%;
+            max-width: 160px;
+            height: auto;
+        }
+
+        .gauge-track {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.14);
+            stroke-width: 12;
+            stroke-linecap: round;
+        }
+
+        .gauge-fill {
+            fill: none;
+            stroke-width: 12;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.3s ease;
+            stroke-dasharray: 376.99;
+            stroke-dashoffset: 376.99;
+        }
+
+        .gauge-text-large {
+            fill: white;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 1.6rem;
+            font-weight: 800;
+            text-anchor: middle;
+        }
+
+        .gauge-text-small {
+            fill: #FFFFFE;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 0.84rem;
+            letter-spacing: 0.18em;
+            text-anchor: middle;
+        }
+
+        .gauge-fill.altitude {
+            stroke: #f97316;
+        }
+
+        .gauge-fill.speed {
+            stroke: #38bdf8;
+        }
+    </style>
+</head>
+<body>
+    <div class="overlay-root">
+        <img src="/assets/UBCRocket_Logo_White_Long_Shadow.png" alt="UBC Rocket Logo" class="logo">
+        <div class="status-panel">
+            <div class="row">
+                <span class="label">STATE</span>
+                <span id="mission-state" class="value status-info">STANDBY</span>
+            </div>
+            <div class="row">
+                <span class="label">ALT</span>
+                <span id="altitude-value" class="value">0 m</span>
+            </div>
+            <div class="row">
+                <span class="label">VEL</span>
+                <span id="speed-value" class="value">0</span>
+            </div>
+            <div class="row">
+                <span class="label">ACC</span>
+                <span id="acceleration-value" class="value">0</span>
+            </div>
+            <div class="row">
+                <span class="label">GPS</span>
+                <span id="gps-value" class="value status-info">
+                  <span id="gps-lat">0.00000</span>, <span id="gps-lng">0.00000</span>
+                </span>
+            </div>
+            <div class="row">
+                <span class="label">MET</span>
+                <span id="mission-time" class="value status-info">00:00:00</span>
+            </div>
+            <div class="row detail-row">
+                <span id="sats-row" class="status-detail">
+                  SATS <span id="sats-value">0</span>
+                  FIX <span id="fix-value">0</span>
+                </span>
+            </div>
+            <div class="row detail-row">
+                <span id="baro-row" class="status-detail">BARO 
+                  <span id="baro1-value" class="status-ok">OK</span> / <span id="baro2-value" class="status-ok">OK</span>
+                </span>
+            </div>
+            <div class="row detail-row">
+                <span id="packet-row" class="status-detail">T+<span id="packet-time">0.0</span>s PKT #<span id="packet-number">0</span></span>
+            </div>
+        </div>
+
+        <div class="gauge-panel">
+            <div class="gauge-card">
+                <div class="gauge-title">SPEED</div>
+                <svg viewBox="0 0 200 200" class="gauge-svg" aria-hidden="true">
+                    <path class="gauge-track" d="M43.43 156.57 A 80 80 0 1 1 156.57 156.57" />
+                    <path id="speed-fill" class="gauge-fill speed" d="M43.43 156.57 A 80 80 0 1 1 156.57 156.57" />
+                    <text id="speed-text" x="100" y="108" class="gauge-text-large">0</text>
+                    <text x="100" y="132" class="gauge-text-small">M/S</text>
+                </svg>
+            </div>
+
+            <div class="gauge-card">
+                <div class="gauge-title">ALTITUDE</div>
+                <svg viewBox="0 0 200 200" class="gauge-svg" aria-hidden="true">
+                    <path class="gauge-track" d="M43.43 156.57 A 80 80 0 1 1 156.57 156.57" />
+                    <path id="altitude-fill" class="gauge-fill altitude" d="M43.43 156.57 A 80 80 0 1 1 156.57 156.57" />
+                    <text id="altitude-text" x="100" y="108" class="gauge-text-large">0</text>
+                    <text x="100" y="132" class="gauge-text-small">M</text>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const PATH_LENGTH = 376.99;
+        const MAX_SPEED = 500;
+        const MAX_ALTITUDE = 10000;
+
+        const speedFill = document.getElementById('speed-fill');
+        const altitudeFill = document.getElementById('altitude-fill');
+        const speedText = document.getElementById('speed-text');
+        const altitudeText = document.getElementById('altitude-text');
+        const missionState = document.getElementById('mission-state');
+        const altitudeValue = document.getElementById('altitude-value');
+        const speedValue = document.getElementById('speed-value');
+        const accelerationValue = document.getElementById('acceleration-value');
+        const gpsValue = document.getElementById('gps-value');
+        const missionTime = document.getElementById('mission-time');
+        const satsRow = document.getElementById('sats-row');
+        const baroRow = document.getElementById('baro-row');
+        const packetRow = document.getElementById('packet-row');
+
+        function formatValue(value) {
+            if (value === null || value === undefined || Number.isNaN(value)) {
+                return '0';
+            }
+            if (value >= 1000) return Math.round(value).toString();
+            if (value >= 100) return value.toFixed(0);
+            if (value >= 10) return value.toFixed(1);
+            return value.toFixed(2);
+        }
+
+        function updateGauge(pathElement, value, max) {
+            const clamped = Math.max(0, Math.min(value, max));
+            const ratio = max > 0 ? clamped / max : 0;
+            const dashOffset = PATH_LENGTH * (1 - ratio);
+            pathElement.style.strokeDashoffset = dashOffset;
+        }
+
+        socket.on('push_data', (data) => {
+            const telemetry = data.telemetry || {};
+            const speed = Number(telemetry.kf_velocity ?? telemetry.speed ?? 0);
+            const altitude = Number(telemetry.kf_altitude ?? telemetry.altitude ?? 0);
+            const acceleration = Number(telemetry.accel_magnitude ?? 0);
+            const gpsLat = Number(telemetry.gps_latitude ?? 0);
+            const gpsLon = Number(telemetry.gps_longitude ?? 0);
+            const sats = telemetry.gps_sats ?? 0;
+            const fix = telemetry.gps_fix ?? 0;
+            const baro0Ok = telemetry.baro0_healthy ?? false;
+            const baro1Ok = telemetry.baro1_healthy ?? false;
+            const packetCount = telemetry.packet_count ?? 0;
+            const errCount = telemetry.error_count ?? 0;
+            const timeSeconds = ((telemetry.timestamp_ms ?? 0) / 1000).toFixed(1);
+
+            missionState.textContent = data.status || 'STANDBY';
+            altitudeValue.textContent = `${altitude.toFixed(2)} m`;
+            speedValue.textContent = `${speed.toFixed(2)} m/s`;
+            accelerationValue.textContent = `${acceleration.toFixed(2)} m/s²`;
+            gpsValue.textContent = `${gpsLat.toFixed(5)}, ${gpsLon.toFixed(5)}`;
+            satsRow.textContent = `SATS ${sats} FIX ${fix}`;
+            const baroText = `BARO ${baro0Ok ? 'OK' : 'FAIL'} / ${baro1Ok ? 'OK' : 'FAIL'}`;
+            baroRow.textContent = baroText;
+            packetRow.textContent = `T+${timeSeconds}s PKT #${packetCount}${errCount ? ` ERR ${errCount}` : ''}`;
+            baroRow.className = `status-detail ${baro0Ok && baro1Ok ? 'status-ok' : 'status-error'}`;
+            packetRow.className = `status-detail ${errCount ? 'status-error' : 'status-info'}`;
+            speedText.textContent = formatValue(speed);
+            altitudeText.textContent = formatValue(altitude);
+            updateGauge(speedFill, Math.abs(speed), MAX_SPEED);
+            updateGauge(altitudeFill, altitude, MAX_ALTITUDE);
+        });
+
+        let startTime = Date.now();
+        setInterval(() => {
+            const diff = Math.floor((Date.now() - startTime) / 1000);
+            const h = Math.floor(diff / 3600).toString().padStart(2, '0');
+            const m = Math.floor((diff % 3600) / 60).toString().padStart(2, '0');
+            const s = Math.floor(diff % 60).toString().padStart(2, '0');
+            missionTime.innerText = `${h}:${m}:${s}`;
+        }, 1000);
+    </script>
+</body>
+</html>
