@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Helios Control Panel</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: #eee; }
+        .admin-panel { max-width: 600px; margin: 0 auto; background: #2a2a2a; padding: 20px; border-radius: 8px; }
+        h1 { border-bottom: 2px solid #b91c1c; padding-bottom: 10px; margin-top: 0; }
+        .control-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #ccc; }
+        input[type="text"], input[type="number"], select { width: calc(100% - 20px); padding: 10px; border-radius: 4px; border: 1px solid #444; background: #1a1a1a; color: white;}
+        button { background: #b91c1c; color: white; padding: 12px 20px; border: none; border-radius: 4px; font-size: 1.1rem; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #dc2626; }
+    </style>
+</head>
+<body>
+
+    <div class="admin-panel">
+        <h1>HELIOS LCC</h1>
+        <p>Telemetry Control Center</p>
+
+        <div class="control-group">
+            <label>Mission Status</label>
+            <select id="missionStatus">
+                <option value="Pre-Flight">Pre-Flight</option>
+                <option value="Powered Flight">Powered Flight</option>
+                <option value="Coasting">Coasting</option>
+                <option value="Recovery">Recovery</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Current Altitude (m)</label>
+            <input type="number" id="alt" placeholder="0">
+        </div>
+
+        <div class="control-group">
+            <label>Current Speed (m/s)</label>
+            <input type="number" id="speed" placeholder="0">
+        </div>
+
+        <div class="control-group">
+            <label>Helios Model FPS</label>
+            <input type="number" id="fps" placeholder="20.5">
+        </div>
+
+        <button onclick="sendTelemetry()">PUSH DATA TO OVERLAY</button>
+    </div>
+
+    <script>
+        const socket = io();
+
+        function sendTelemetry() {
+            // Collect the data from the form
+            const telemetryData = {
+                status: document.getElementById('missionStatus').value,
+                telemetry: {
+                    altitude: document.getElementById('alt').value || '0',
+                    speed: document.getElementById('speed').value || '0'
+                },
+                system: {
+                    helios_fps: document.getElementById('fps').value || '0'
+                }
+            };
+
+            // Emit the command via Socket.IO
+            console.log("Sending to server:", telemetryData);
+            socket.emit('admin_update', telemetryData);
+        }
+    </script>
+</body>
+</html>
