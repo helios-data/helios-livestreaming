@@ -48,7 +48,7 @@ COPY --from=builder /app /app
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
-EXPOSE 5000
+EXPOSE 8080
 
 # Use the venv's python directly for better performance/signals
 CMD ["python", "src/main.py"]
