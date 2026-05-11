@@ -13,8 +13,9 @@
             height: 100%;
             background: transparent;
             color: white;
-            font-family: 'Courier New', monospace;
+            font-family: 'Roboto Mono', monospace;
             overflow: hidden;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
         }
 
         .overlay-root {
@@ -63,7 +64,7 @@
         }
 
         .status-panel .label {
-            min-width: 50px;
+            min-width: 75px;
             text-align: left;
         }
 
@@ -123,7 +124,7 @@
         .gauge-title {
             font-size: 0.84rem;
             letter-spacing: 0.18em;
-            color: rgba(255, 255, 255, 0.75);
+            color: #FFFFFE;
             margin-bottom: 8px;
         }
 
@@ -151,15 +152,15 @@
 
         .gauge-text-large {
             fill: white;
-            font-family: 'Courier New', monospace;
+            font-family: 'Roboto Mono', monospace;
             font-size: 1.6rem;
             font-weight: 800;
             text-anchor: middle;
         }
 
         .gauge-text-small {
-            fill: rgba(255, 255, 255, 0.8);
-            font-family: 'Courier New', monospace;
+            fill: #FFFFFE;
+            font-family: 'Roboto Mono', monospace;
             font-size: 0.84rem;
             letter-spacing: 0.18em;
             text-anchor: middle;
@@ -176,7 +177,7 @@
 </head>
 <body>
     <div class="overlay-root">
-        <img src="/assets/UBCRocket_Logo_Coloured_Long.png" alt="UBC Rocket Logo" class="logo">
+        <img src="/assets/UBCRocket_Logo_White_Long_Shadow.png" alt="UBC Rocket Logo" class="logo">
         <div class="status-panel">
             <div class="row">
                 <span class="label">STATE</span>
@@ -184,7 +185,7 @@
             </div>
             <div class="row">
                 <span class="label">ALT</span>
-                <span id="altitude-value" class="value">0</span>
+                <span id="altitude-value" class="value">0 m</span>
             </div>
             <div class="row">
                 <span class="label">VEL</span>
@@ -197,7 +198,7 @@
             <div class="row">
                 <span class="label">GPS</span>
                 <span id="gps-value" class="value status-info">
-                  <span id="gps-lat">0</span>, <span id="gps-lng">0</span>
+                  <span id="gps-lat">0.00000</span>, <span id="gps-lng">0.00000</span>
                 </span>
             </div>
             <div class="row">
@@ -296,9 +297,9 @@
             const timeSeconds = ((telemetry.timestamp_ms ?? 0) / 1000).toFixed(1);
 
             missionState.textContent = data.status || 'STANDBY';
-            altitudeValue.textContent = formatValue(altitude);
-            speedValue.textContent = formatValue(speed);
-            accelerationValue.textContent = formatValue(acceleration);
+            altitudeValue.textContent = `${altitude.toFixed(2)} m`;
+            speedValue.textContent = `${speed.toFixed(2)} m/s`;
+            accelerationValue.textContent = `${acceleration.toFixed(2)} m/s²`;
             gpsValue.textContent = `${gpsLat.toFixed(5)}, ${gpsLon.toFixed(5)}`;
             satsRow.textContent = `SATS ${sats} FIX ${fix}`;
             const baroText = `BARO ${baro0Ok ? 'OK' : 'FAIL'} / ${baro1Ok ? 'OK' : 'FAIL'}`;
