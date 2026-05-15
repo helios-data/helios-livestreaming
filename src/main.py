@@ -66,7 +66,7 @@ async def main() -> None:
     """Main coroutine - connect to Helios and stream telemetry to overlay."""
     # Start Flask server in background thread
     flask_thread = threading.Thread(
-        target=lambda: socketio.run(app, host='0.0.0.0', port=8080, debug=False),
+        target=lambda: socketio.run(app, host='0.0.0.0', port=8080, debug=False, allow_unsafe_werkzeug=True),
         daemon=True
     )
     flask_thread.start()
@@ -105,7 +105,8 @@ async def main() -> None:
                     # Broadcast to all connected overlay clients with good packet status
                     broadcast_telemetry(telemetry, error_count, last_error=False)
 
-                    logger.debug(
+                    # TODO: Change to debug later
+                    logger.info(
                         f"[Telemetry] Broadcasted: state={flight_state_name(telemetry.state)}, "
                         f"alt={telemetry.kf_altitude:.1f}m, vel={telemetry.kf_velocity:.1f}m/s"
                     )
