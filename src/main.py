@@ -75,7 +75,7 @@ async def main() -> None:
     helios_client = HeliosClient(
         core_address="Helios",
         core_port=5000,
-        node_uri="Helios.FALCON.Dashboard",
+        node_uri="Helios.FALCON.Livestream",
     )
 
     try:
