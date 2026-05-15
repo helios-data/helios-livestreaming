@@ -283,17 +283,22 @@
 
         socket.on('push_data', (data) => {
             const telemetry = data.telemetry || {};
-            const speed = Number(telemetry.kf_velocity ?? telemetry.speed ?? 0);
-            const altitude = Number(telemetry.kf_altitude ?? telemetry.altitude ?? 0);
-            const acceleration = Number(telemetry.accel_magnitude ?? 0);
+            const speed = Number(telemetry.kf_velocity ?? 0);
+            const altitude = Number(telemetry.kf_altitude ?? 0);
+            // Calculate acceleration magnitude from components
+            const accelX = Number(telemetry.accel_x ?? 0);
+            const accelY = Number(telemetry.accel_y ?? 0);
+            const accelZ = Number(telemetry.accel_z ?? 0);
+            const acceleration = Math.sqrt(accelX*accelX + accelY*accelY + accelZ*accelZ);
             const gpsLat = Number(telemetry.gps_latitude ?? 0);
             const gpsLon = Number(telemetry.gps_longitude ?? 0);
-            const sats = telemetry.gps_sats ?? 0;
-            const fix = telemetry.gps_fix ?? 0;
+            const sats = Number(telemetry.gps_sats ?? 0);
+            const fix = Number(telemetry.gps_fix ?? 0);
             const baro0Ok = telemetry.baro0_healthy ?? false;
             const baro1Ok = telemetry.baro1_healthy ?? false;
-            const packetCount = telemetry.packet_count ?? 0;
-            const errCount = telemetry.error_count ?? 0;
+            const packetCount = Number(telemetry.packet_count ?? 0);
+            const errCount = Number(telemetry.error_count ?? 0);
+            const lastError = telemetry.last_error ?? false;
             const timeSeconds = ((telemetry.timestamp_ms ?? 0) / 1000).toFixed(1);
 
             missionState.textContent = data.status || 'STANDBY';
@@ -306,7 +311,7 @@
             baroRow.textContent = baroText;
             packetRow.textContent = `T+${timeSeconds}s PKT #${packetCount}${errCount ? ` ERR ${errCount}` : ''}`;
             baroRow.className = `status-detail ${baro0Ok && baro1Ok ? 'status-ok' : 'status-error'}`;
-            packetRow.className = `status-detail ${errCount ? 'status-error' : 'status-info'}`;
+            packetRow.className = `status-detail ${lastError ? 'status-error' : 'status-info'}`;
             speedText.textContent = formatValue(speed);
             altitudeText.textContent = formatValue(altitude);
             updateGauge(speedFill, Math.abs(speed), MAX_SPEED);
