@@ -26,7 +26,10 @@ def flight_state_name(state: int) -> str:
 
 def broadcast_telemetry(telemetry: TelemetryPacket, error_count: int = 0, last_error: bool = False) -> None:
     """Broadcast telemetry data to all connected overlay clients via Socket.IO."""
-    state = telemetry.state if telemetry.state is not None else FlightState.STANDBY
+    raw_state = telemetry.state
+    if isinstance(raw_state, list):
+        raw_state = raw_state[0] if raw_state else None
+    state = raw_state if raw_state is not None else FlightState.STANDBY
     data_to_broadcast = {
         "status": flight_state_name(state),
         "telemetry": {
