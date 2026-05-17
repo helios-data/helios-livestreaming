@@ -51,4 +51,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 
 # Use the venv's python directly for better performance/signals
-CMD ["python", "src/main.py"]
+ENTRYPOINT ["python", "src/main.py"]

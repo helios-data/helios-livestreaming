@@ -1,13 +1,10 @@
 from flask import Flask, render_template, Blueprint
 from flask_socketio import SocketIO
-import eventlet
-
-# Use eventlet for concurrency
-eventlet.monkey_patch()
 
 app = Flask(__name__,)
 # IMPORTANT: cors_allowed_origins="*" for OBS compatibility
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+# async_mode='threading' avoids eventlet monkey-patching, which breaks asyncio
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Create a blueprint specifically for your assets
 assets_bp = Blueprint('assets', __name__, 
